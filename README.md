@@ -1,1 +1,1 @@
-test if auto reveiw tirgger works on this PR
+test if goose auto reveiw works
