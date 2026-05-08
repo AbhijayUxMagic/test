@@ -1,1 +1,1 @@
-test if auto reveiw tirgger works on this PR
+Test if auto review trigger works on this PR.
