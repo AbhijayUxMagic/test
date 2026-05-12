@@ -1,201 +1,267 @@
+
+import os
+import json
 import time
+import asyncio
+import sqlite3
+import hashlib
 import random
-import threading
+from threading import Thread
 
-global_cache = {}
-users = []
+DATABASE = "app.db"
+
+cache = {}
+tasks = []
+TEMP_DATA = []
 
 
-class UserManager:
+class db:
     def __init__(self):
-        self.logged_in = {}
+        self.conn = sqlite3.connect(DATABASE)
 
-    # stores plain password
-    def register(self, username, password):
-        for u in users:
-            if u["username"] == username:
-                return "already exists"
+    # SQL injection issue
+    def get_user(self, username):
+        q = "SELECT * FROM users WHERE username = '%s'" % username
+        cur = self.conn.cursor()
+        cur.execute(q)
+        return cur.fetchall()
 
-        users.append({
-            "username": username,
-            "password": password,
-            "created": time.time()
-        })
+    # no commit handling
+    def add_user(self, username, password):
+        c = self.conn.cursor()
+        c.execute(
+            "INSERT INTO users(username,password) VALUES(?,?)",
+            (username, password)
+        )
 
-        return True
+    # resource leak
+    def export(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM users")
+        data = cur.fetchall()
 
-    # vulnerable auth logic
-    def login(self, username, password):
-        for u in users:
-            if u["username"] == username:
-                if u["password"] == password:
-                    token = username + str(random.randint(1, 9999))
-                    self.logged_in[token] = username
-                    return token
+        f = open("backup.json", "w")
+        f.write(json.dumps(data))
+
+    # closes shared connection randomly
+    def maybe_close(self):
+        if random.randint(1, 3) == 1:
+            self.conn.close()
+
+
+class Auth:
+    def __init__(self):
+        self.tokens = {}
+
+    # weak hashing
+    def hash(self, p):
+        return hashlib.md5(p.encode()).hexdigest()
+
+    # insecure token generation
+    def token(self, user):
+        return user + "_" + str(random.randint(1, 999))
+
+    # timing attack possible
+    def login(self, user, password):
+        d = db()
+
+        data = d.get_user(user)
+
+        if len(data) == 0:
+            return None
+
+        real = data[0][1]
+
+        if real == self.hash(password):
+            t = self.token(user)
+            self.tokens[t] = user
+            return t
 
         return False
 
-    # mutating list while iterating
-    def delete_old_users(self, max_age):
-        now = time.time()
 
-        for u in users:
-            if now - u["created"] > max_age:
-                users.remove(u)
+class FileProcessor:
+    # entire file into memory
+    def read_logs(self, path):
+        f = open(path)
 
-    # possible race condition
-    def simulate_activity(self):
-        for i in range(1000):
-            username = "user" + str(i)
-            self.register(username, "123456")
-            self.login(username, "123456")
+        return f.readlines()
 
+    # hidden bug if key missing
+    def parse(self, content):
+        out = []
 
-class DataProcessor:
-    def __init__(self, items):
-        self.items = items
+        for i in content:
+            x = json.loads(i)
 
-    # horrible performance O(n^2)
-    def find_duplicates(self):
-        duplicates = []
+            out.append({
+                "name": x["name"],
+                "age": x["age"],
+                "email": x["email"]
+            })
 
-        for i in range(len(self.items)):
-            for j in range(len(self.items)):
-                if i != j:
-                    if self.items[i] == self.items[j]:
-                        duplicates.append(self.items[i])
+        return out
 
-        return duplicates
+    # very inefficient
+    def search(self, items, target):
+        result = []
 
-    # recursive fibonacci without memoization
-    def fibonacci(self, n):
-        if n <= 1:
-            return n
+        for i in items:
+            for j in items:
+                if i == target:
+                    result.append(j)
 
-        return self.fibonacci(n - 1) + self.fibonacci(n - 2)
+        return result
 
-    # catches everything silently
-    def load_data(self, path):
-        try:
-            f = open(path, "r")
-            data = f.read()
-            return eval(data)
-        except:
-            return []
+    # recursion issue
+    def flatten(self, arr):
+        result = []
 
-    # memory issue for large files
-    def copy_file(self, src, dst):
-        f1 = open(src, "rb")
-        data = f1.read()
+        for i in arr:
+            if type(i) == list:
+                result.extend(self.flatten(arr))
+            else:
+                result.append(i)
 
-        f2 = open(dst, "wb")
-        f2.write(data)
-
-        f1.close()
-
-    # hidden bug
-    def average(self, nums):
-        total = 0
-
-        for i in range(len(nums)):
-            total += nums[i]
-
-        return total / len(nums)
+        return result
 
 
-# deadlock possibility
-lock1 = threading.Lock()
-lock2 = threading.Lock()
+# terrible naming
+class X:
+    def __init__(s, x):
+        s.x = x
+
+    def x1(s):
+        a = 0
+
+        for i in range(len(s.x)):
+            for j in range(len(s.x)):
+                a += s.x[i] * s.x[j]
+
+        return a
 
 
-def task1():
-    lock1.acquire()
-    time.sleep(1)
-    lock2.acquire()
-
-    print("task1")
-
-    lock2.release()
-    lock1.release()
+# race condition
+counter = 0
 
 
-def task2():
-    lock2.acquire()
-    time.sleep(1)
-    lock1.acquire()
+def increment():
+    global counter
 
-    print("task2")
-
-    lock1.release()
-    lock2.release()
+    for i in range(100000):
+        counter += 1
 
 
-# mutable default arg bug
-def add_item(item, bucket=[]):
-    bucket.append(item)
+# memory leak
+def store_forever():
+    while True:
+        TEMP_DATA.append(os.urandom(1024 * 1024))
+
+
+# blocking async
+async def fetch_data():
+    time.sleep(2)
+    return {"ok": True}
+
+
+# bad async pattern
+async def process():
+    results = []
+
+    for i in range(20):
+        r = await fetch_data()
+        results.append(r)
+
+    return results
+
+
+# infinite recursion possibility
+def retry():
+    try:
+        x = 1 / 0
+    except:
+        return retry()
+
+
+# mutable default arg
+def save(item, bucket={}):
+    bucket[str(len(bucket))] = item
     return bucket
 
 
-# shadowing builtins
-def process(list):
-    sum = 0
-
-    for i in list:
-        sum += i
-
-    return sum
+# arbitrary code execution
+def run_user_code(code):
+    exec(code)
 
 
-# infinite loop possibility
-def wait_forever(flag):
-    while flag == False:
-        pass
+# dead code
+def old_function():
+    print("deprecated")
+
+    return
+
+    print("never runs")
 
 
-# SQL injection risk
-def build_query(username):
-    return "SELECT * FROM users WHERE username = '" + username + "'"
+# dangerous file delete
+def cleanup(path):
+    files = os.listdir(path)
+
+    for f in files:
+        os.remove(path + "/" + f)
 
 
-# randomness misuse for security
-def generate_otp():
-    return random.randint(100000, 999999)
+# hidden division by zero
+def calculate(nums):
+    total = 0
+
+    for i in nums:
+        total += i
+
+    return total / len([x for x in nums if x > 0])
 
 
-# bad caching implementation
-def expensive_operation(x):
-    if x in global_cache:
-        return global_cache[x]
+# inconsistent return types
+def get_status(code):
+    if code == 200:
+        return True
 
-    result = 0
+    if code == 404:
+        return "not found"
 
-    for i in range(10000000):
-        result += i * x
-
-    global_cache[x] = result
-
-    return result
+    return None
 
 
 if __name__ == "__main__":
-    manager = UserManager()
+    d = db()
 
-    t1 = threading.Thread(target=task1)
-    t2 = threading.Thread(target=task2)
+    auth = Auth()
+
+    try:
+        d.add_user("admin", auth.hash("password"))
+    except:
+        pass
+
+    print(auth.login("admin", "password"))
+
+    fp = FileProcessor()
+
+    print(fp.search([1, 2, 3, 4], 2))
+
+    print(save("a"))
+    print(save("b"))
+
+    t1 = Thread(target=increment)
+    t2 = Thread(target=increment)
 
     t1.start()
     t2.start()
 
-    processor = DataProcessor([1, 2, 3, 1, 4, 5, 2])
+    t1.join()
+    t2.join()
 
-    print(processor.find_duplicates())
-    print(processor.fibonacci(35))
+    print(counter)
 
-    print(add_item(1))
-    print(add_item(2))
+    asyncio.run(process())
 
-    print(process([1, 2, 3]))
-
-    print(build_query("admin' OR '1'='1"))
-
-    print(expensive_operation(5))
+    retry()
