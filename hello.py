@@ -1,59 +1,79 @@
-import random
+# Small intentionally problematic script for testing code review systems
 
-users = {}
+import threading
+import time
 
-
-def register(username, password=[]):  # mutable default bug
-    if username in users:
-        return False
-
-    users[username] = {
-        "password": password,
-        "id": random.randint(1, 10)  # weak/random collisions
-    }
-
-    return True
+data = []
+balance = 1000
 
 
-def login(username, password):
-    # possible KeyError
-    if users[username]["password"] == password:
-        return "token_" + username
+# race condition
+def withdraw(amount):
+    global balance
 
-    return None
-
-
-def search(items, target):
-    result = []
-
-    # unnecessary O(n^2)
-    for i in items:
-        for j in items:
-            if i == target:
-                result.append(j)
-
-    return result
+    if balance >= amount:
+        current = balance
+        time.sleep(0.01)
+        balance = current - amount
 
 
-def divide(a, b):
+# memory growth issue
+def collect_logs():
+    while True:
+        data.append("log entry")
+
+
+# hidden bug
+def average(nums):
+    total = 0
+
+    for n in nums:
+        total += n
+
+    return total / len(nums)
+
+
+# mutable default argument
+def add_tag(tag, tags=[]):
+    tags.append(tag)
+    return tags
+
+
+# broad exception catch
+def parse_int(x):
     try:
-        return a / b
+        return int(x)
     except:
-        return 0  # hides all errors
+        return -1
 
 
-def run(data):
-    # unsafe eval
-    return eval(data)
+# inefficient duplicate finder
+def duplicates(items):
+    out = []
+
+    for i in items:
+        if items.count(i) > 1:
+            out.append(i)
+
+    return out
 
 
-print(register("admin"))
-print(register("admin2"))
+t1 = threading.Thread(target=withdraw, args=(700,))
+t2 = threading.Thread(target=withdraw, args=(700,))
 
-print(login("admin", []))
+t1.start()
+t2.start()
 
-print(search([1, 2, 3, 4], 2))
+t1.join()
+t2.join()
 
-print(divide(10, 0))
+print(balance)
 
-print(run("__import__('os').system('echo hacked')"))
+print(add_tag("python"))
+print(add_tag("bug"))
+
+print(average([]))
+
+print(parse_int(None))
+
+print(duplicates([1, 2, 2, 3, 3, 3]))
