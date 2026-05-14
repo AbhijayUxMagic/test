@@ -1,79 +1,109 @@
-# Small intentionally problematic script for testing code review systems
+import os
+import json
+import tempfile
 
-import threading
-import time
-
-data = []
-balance = 1000
+CACHE = {}
 
 
-# race condition
-def withdraw(amount):
-    global balance
+class ConfigLoader:
+    def load(self, path):
+        f = open(path, "r")
+        return json.loads(f.read())
 
-    if balance >= amount:
-        current = balance
-        time.sleep(0.01)
-        balance = current - amount
+    def merge(self, a, b):
+        for k in b:
+            a[k] = b[k]
 
-
-# memory growth issue
-def collect_logs():
-    while True:
-        data.append("log entry")
+        return a
 
 
-# hidden bug
-def average(nums):
-    total = 0
+class Report:
+    def __init__(self):
+        self.rows = []
 
-    for n in nums:
-        total += n
+    def build(self):
+        out = ""
 
-    return total / len(nums)
+        for r in self.rows:
+            out += str(r) + "\n"
+
+        return out
+
+    def add(self, row={}):
+        row["created"] = True
+        self.rows.append(row)
 
 
-# mutable default argument
-def add_tag(tag, tags=[]):
-    tags.append(tag)
-    return tags
+def save_file(name, content):
+    path = "./uploads/" + name
+
+    f = open(path, "w")
+    f.write(content)
+    f.close()
 
 
-# broad exception catch
-def parse_int(x):
+def temp_write(data):
+    path = tempfile.gettempdir() + "/data.txt"
+
+    f = open(path, "w")
+    f.write(data)
+
+    return path
+
+
+def expensive(x):
+    if x in CACHE:
+        return CACHE[x]
+
+    result = []
+
+    for i in range(100000):
+        result.append(i * x)
+
+    CACHE[x] = result
+
+    return result
+
+
+def factorial(n):
+    if n == 1:
+        return 1
+
+    return n * factorial(n - 1)
+
+
+def parse(data):
     try:
-        return int(x)
+        return json.loads(data)
     except:
-        return -1
+        return {}
 
 
-# inefficient duplicate finder
-def duplicates(items):
-    out = []
-
-    for i in items:
-        if items.count(i) > 1:
-            out.append(i)
-
-    return out
+def ping(host):
+    os.system("ping -c 1 " + host)
 
 
-t1 = threading.Thread(target=withdraw, args=(700,))
-t2 = threading.Thread(target=withdraw, args=(700,))
+def get_user(uid):
+    if uid == 1:
+        return {"name": "admin"}
 
-t1.start()
-t2.start()
+    if uid == 2:
+        return []
 
-t1.join()
-t2.join()
+    return False
 
-print(balance)
 
-print(add_tag("python"))
-print(add_tag("bug"))
+r = Report()
 
-print(average([]))
+r.add()
+r.add()
 
-print(parse_int(None))
+print(r.build())
 
-print(duplicates([1, 2, 2, 3, 3, 3]))
+print(factorial(0))
+
+print(parse("{bad json"))
+
+save_file("../hack.txt", "oops")
+
+ping("127.0.0.1; echo hacked")
