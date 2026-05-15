@@ -1,5 +1,6 @@
 import os
 import json
+import subprocess
 import tempfile
 
 CACHE = {}
@@ -7,8 +8,8 @@ CACHE = {}
 
 class ConfigLoader:
     def load(self, path):
-        f = open(path, "r")
-        return json.loads(f.read())
+        with open(path, "r") as f:
+            return json.loads(f.read())
 
     def merge(self, a, b):
         for k in b:
@@ -29,24 +30,27 @@ class Report:
 
         return out
 
-    def add(self, row={}):
+    def add(self, row=None):
+        if row is None:
+            row = {}
         row["created"] = True
         self.rows.append(row)
 
 
 def save_file(name, content):
-    path = "./uploads/" + name
+    # Sanitize filename to prevent path traversal
+    safe_name = os.path.basename(name)
+    path = os.path.join("./uploads", safe_name)
 
-    f = open(path, "w")
-    f.write(content)
-    f.close()
+    with open(path, "w") as f:
+        f.write(content)
 
 
 def temp_write(data):
-    path = tempfile.gettempdir() + "/data.txt"
+    path = os.path.join(tempfile.gettempdir(), "data.txt")
 
-    f = open(path, "w")
-    f.write(data)
+    with open(path, "w") as f:
+        f.write(data)
 
     return path
 
@@ -66,7 +70,7 @@ def expensive(x):
 
 
 def factorial(n):
-    if n == 1:
+    if n <= 1:
         return 1
 
     return n * factorial(n - 1)
@@ -75,12 +79,13 @@ def factorial(n):
 def parse(data):
     try:
         return json.loads(data)
-    except:
+    except json.JSONDecodeError:
         return {}
 
 
 def ping(host):
-    os.system("ping -c 1 " + host)
+    # Use subprocess with a list to avoid shell injection
+    subprocess.run(["ping", "-c", "1", host], check=False)
 
 
 def get_user(uid):
@@ -88,9 +93,9 @@ def get_user(uid):
         return {"name": "admin"}
 
     if uid == 2:
-        return []
+        return {"name": "guest"}
 
-    return False
+    return None
 
 
 r = Report()
@@ -103,7 +108,3 @@ print(r.build())
 print(factorial(0))
 
 print(parse("{bad json"))
-
-save_file("../hack.txt", "oops")
-
-ping("127.0.0.1; echo hacked")
