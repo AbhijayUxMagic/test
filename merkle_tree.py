@@ -86,6 +86,10 @@ class MerkleTree:
             - ``"hash"``      – sibling hash
             - ``"position"``  – ``"left"`` or ``"right"`` (sibling's position)
         """
+        if not (0 <= index < len(data_blocks)):
+            raise IndexError(
+                f"index {index} is out of range for {len(data_blocks)} data block(s)."
+            )
         leaves = [MerkleNode(data=block) for block in data_blocks]
         proof: list[dict] = []
         self._collect_proof(leaves, index, proof)
@@ -205,6 +209,13 @@ class TestMerkleTree(unittest.TestCase):
         self.assertFalse(
             MerkleTree.verify_proof(self.data[0], proof, "a" * 64)
         )
+
+    def test_get_proof_out_of_range_raises(self):
+        """get_proof() must raise IndexError for out-of-range indices."""
+        with self.assertRaises(IndexError):
+            self.tree.get_proof(len(self.data), self.data)  # index == len
+        with self.assertRaises(IndexError):
+            self.tree.get_proof(-1, self.data)  # negative index
 
     def test_proof_odd_tree(self):
         data = ["a", "b", "c"]
